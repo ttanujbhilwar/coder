@@ -190,12 +190,22 @@ function Hotspot({ x, y, label, icon, visible }) {
 }
 
 function TourViewer({ scene, isLoading, isDragging, dragOffset, onMouseDown }) {
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const [currentSrc, setCurrentSrc] = useState(scene.image);
+
+  useEffect(() => {
+    setImgLoaded(false);
+    setCurrentSrc(scene.image);
+  }, [scene.image]);
+
+  const fullyLoaded = !isLoading && imgLoaded;
+
   return (
     <div style={{
       position: "relative", width: "100%", height: "100%",
       overflow: "hidden", borderRadius: "inherit",
     }}>
-      {isLoading && <LoadingSkeleton />}
+      {(!fullyLoaded) && <LoadingSkeleton />}
 
       <div
         onMouseDown={onMouseDown}
@@ -206,9 +216,10 @@ function TourViewer({ scene, isLoading, isDragging, dragOffset, onMouseDown }) {
         }}
       >
         <img
-          src={scene.image}
+          src={currentSrc}
           alt={scene.label}
           draggable={false}
+          onLoad={() => setImgLoaded(true)}
           style={{
             position: "absolute",
             width: "140%", height: "120%",
@@ -216,40 +227,35 @@ function TourViewer({ scene, isLoading, isDragging, dragOffset, onMouseDown }) {
             objectFit: "cover",
             transition: isDragging ? "none" : "left 0.1s ease, transform 0.6s ease",
             transform: `translateY(${dragOffset.y * 0.03}%) scale(1.02)`,
-            filter: isLoading ? "blur(8px) brightness(0.6)" : "brightness(0.75)",
+            filter: !fullyLoaded ? "blur(8px) brightness(0.6)" : "brightness(0.75)",
+            opacity: fullyLoaded ? 1 : 0,
             willChange: "left, transform",
           }}
-          onLoad={() => {}}
         />
       </div>
 
-      {/* Cinematic vignette */}
       <div style={{
         position: "absolute", inset: 0, pointerEvents: "none",
         background: "radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.7) 100%)",
       }} />
 
-      {/* Bottom gradient */}
       <div style={{
         position: "absolute", bottom: 0, left: 0, right: 0, height: "45%",
         background: "linear-gradient(to top, rgba(0,0,0,0.9) 0%, transparent 100%)",
         pointerEvents: "none",
       }} />
 
-      {/* Top gradient */}
       <div style={{
         position: "absolute", top: 0, left: 0, right: 0, height: "25%",
         background: "linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, transparent 100%)",
         pointerEvents: "none",
       }} />
 
-      {/* Hotspots */}
       {scene.hotspots.map((h, i) => (
-        <Hotspot key={i} {...h} visible={!isLoading} />
+        <Hotspot key={i} {...h} visible={fullyLoaded} />
       ))}
 
-      {/* Drag to explore */}
-      {!isLoading && (
+      {fullyLoaded && (
         <div style={{
           position: "absolute", top: "50%", left: "50%",
           transform: "translate(-50%, -50%)",
@@ -274,10 +280,9 @@ function TourViewer({ scene, isLoading, isDragging, dragOffset, onMouseDown }) {
         </div>
       )}
 
-      {/* Scene label */}
       <div style={{
         position: "absolute", bottom: 28, left: 28,
-        opacity: isLoading ? 0 : 1,
+        opacity: fullyLoaded ? 1 : 0,
         transition: "opacity 0.8s ease 0.3s",
       }}>
         <p style={{
@@ -292,7 +297,6 @@ function TourViewer({ scene, isLoading, isDragging, dragOffset, onMouseDown }) {
         }}>{scene.label}</h3>
       </div>
 
-      {/* 360 badge */}
       <div style={{
         position: "absolute", top: 20, right: 20,
         background: "rgba(0,0,0,0.5)",
@@ -314,9 +318,10 @@ export default function VirtualTourWebsite() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [scrollY, setScrollY] = useState(0);
   const dragOffsetRef = useRef({ x: 0, y: 0 });
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
   const parallax = useParallax();
   const containerRef = useRef(null);
 
@@ -333,28 +338,35 @@ export default function VirtualTourWebsite() {
   }, []);
 
   const handleMouseDown = useCallback((e) => {
+    isDraggingRef.current = true;
     setIsDragging(true);
-    setDragStart({ x: e.clientX - dragOffsetRef.current.x, y: e.clientY - dragOffsetRef.current.y });
+    dragStartRef.current = {
+      x: e.clientX - dragOffsetRef.current.x,
+      y: e.clientY - dragOffsetRef.current.y,
+    };
   }, []);
 
   useEffect(() => {
     const handleMouseMove = (e) => {
-      if (!isDragging) return;
+      if (!isDraggingRef.current) return;
       const newOffset = {
-        x: Math.max(-120, Math.min(120, e.clientX - dragStart.x)),
-        y: Math.max(-40, Math.min(40, e.clientY - dragStart.y)),
+        x: Math.max(-120, Math.min(120, e.clientX - dragStartRef.current.x)),
+        y: Math.max(-40, Math.min(40, e.clientY - dragStartRef.current.y)),
       };
       dragOffsetRef.current = newOffset;
       setDragOffset(newOffset);
     };
-    const handleMouseUp = () => setIsDragging(false);
+    const handleMouseUp = () => {
+      isDraggingRef.current = false;
+      setIsDragging(false);
+    };
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isDragging, dragStart]);
+  }, []);
 
   const scene = TOUR_SCENES[activeScene];
 
@@ -430,7 +442,6 @@ export default function VirtualTourWebsite() {
           overflow-x: hidden;
         }
 
-        /* NAV */
         .nav {
           position: fixed; top: 0; left: 0; right: 0;
           z-index: 100;
@@ -480,7 +491,6 @@ export default function VirtualTourWebsite() {
           border-color: rgba(255,255,255,0.6);
         }
 
-        /* HERO */
         .hero {
           position: relative; min-height: 100vh;
           display: flex; align-items: center; justify-content: center;
@@ -569,7 +579,6 @@ export default function VirtualTourWebsite() {
           animation: shimmer 2s ease infinite;
         }
 
-        /* TOUR SECTION */
         .tour-section {
           padding: 80px 24px;
           background: var(--dark-2);
@@ -596,7 +605,6 @@ export default function VirtualTourWebsite() {
           max-width: 1200px; margin: 0 auto;
         }
 
-        /* Scene tabs */
         .scene-tabs {
           display: flex; gap: 0; overflow-x: auto;
           border-radius: 16px 16px 0 0; overflow: hidden;
@@ -620,7 +628,6 @@ export default function VirtualTourWebsite() {
           border-bottom: 2px solid var(--gold);
         }
 
-        /* Viewer */
         .viewer-container {
           position: relative; height: 520px;
           border-radius: 0 0 20px 20px;
@@ -628,7 +635,6 @@ export default function VirtualTourWebsite() {
           overflow: hidden;
         }
 
-        /* Scene controls */
         .scene-controls {
           position: absolute; right: 20px; top: 50%;
           transform: translateY(-50%);
@@ -648,7 +654,6 @@ export default function VirtualTourWebsite() {
           border-color: rgba(255,255,255,0.4);
         }
 
-        /* INDUSTRIES */
         .industries-section {
           padding: 100px 24px;
           background: var(--dark);
@@ -709,7 +714,6 @@ export default function VirtualTourWebsite() {
           transform: translateY(-50%) rotate(45deg);
         }
 
-        /* STATS */
         .stats-section {
           padding: 80px 24px;
           background: var(--dark-2);
@@ -732,7 +736,6 @@ export default function VirtualTourWebsite() {
           text-transform: uppercase; color: var(--text-muted);
         }
 
-        /* CTA SECTION */
         .cta-section {
           padding: 120px 24px;
           text-align: center; position: relative; overflow: hidden;
@@ -761,7 +764,6 @@ export default function VirtualTourWebsite() {
           flex-wrap: wrap; position: relative; z-index: 1;
         }
 
-        /* FOOTER */
         .footer {
           padding: 40px; display: flex;
           align-items: center; justify-content: space-between;
@@ -781,7 +783,6 @@ export default function VirtualTourWebsite() {
         }
         .footer-links a:hover { color: #fff; }
 
-        /* Glass card */
         .glass {
           background: rgba(255,255,255,0.04);
           backdrop-filter: blur(20px);
@@ -801,7 +802,6 @@ export default function VirtualTourWebsite() {
       `}</style>
 
       <div className="page" ref={containerRef}>
-        {/* NAV */}
         <nav className={`nav ${scrollY > 60 ? "scrolled" : ""}`}>
           <div className="nav-logo">
             <div className="logo-dot" />
@@ -809,20 +809,18 @@ export default function VirtualTourWebsite() {
           </div>
           <ul className="nav-links">
             {["Tours", "Industries", "Pricing", "About"].map(l => (
-              <li key={l}><a>{l}</a></li>
+              <li key={l}><a href={`#${l.toLowerCase()}`} onClick={(e) => e.preventDefault()}>{l}</a></li>
             ))}
           </ul>
           <button className="nav-cta">Book a Demo</button>
         </nav>
 
-        {/* HERO */}
         <section className="hero">
           <div className="hero-bg" style={{
             transform: `translate(${parallax.x * 0.5}px, ${parallax.y * 0.5}px)`,
           }} />
           <div className="hero-grid" />
 
-          {/* Floating particles */}
           {[...Array(12)].map((_, i) => (
             <div key={i} style={{
               position: "absolute",
@@ -861,8 +859,7 @@ export default function VirtualTourWebsite() {
           </div>
         </section>
 
-        {/* TOUR VIEWER */}
-        <section className="tour-section">
+        <section className="tour-section" id="tours">
           <div className="section-header">
             <span className="section-tag">◈ Live Preview</span>
             <h2 className="section-title">Immersive Tour Experience</h2>
@@ -876,6 +873,7 @@ export default function VirtualTourWebsite() {
                   key={s.id}
                   className={`scene-tab ${i === activeScene ? "active" : ""}`}
                   onClick={() => { setActiveScene(i); setDragOffset({ x: 0, y: 0 }); dragOffsetRef.current = { x: 0, y: 0 }; }}
+                  aria-label={`View ${s.industry} scene`}
                 >
                   <span>{s.icon}</span>
                   <span className="tab-text">{s.industry}</span>
@@ -892,7 +890,6 @@ export default function VirtualTourWebsite() {
                 onMouseDown={handleMouseDown}
               />
 
-              {/* Navigation controls */}
               <div className="scene-controls">
                 <button
                   className="ctrl-btn"
@@ -906,7 +903,6 @@ export default function VirtualTourWebsite() {
                 >›</button>
               </div>
 
-              {/* Progress dots */}
               <div style={{
                 position: "absolute", bottom: 24, right: 24,
                 display: "flex", gap: 6, zIndex: 5,
@@ -915,6 +911,7 @@ export default function VirtualTourWebsite() {
                   <button
                     key={i}
                     onClick={() => setActiveScene(i)}
+                    aria-label={`Go to scene ${i + 1}`}
                     style={{
                       width: i === activeScene ? 20 : 6,
                       height: 6, borderRadius: 3,
@@ -929,7 +926,6 @@ export default function VirtualTourWebsite() {
           </div>
         </section>
 
-        {/* STATS */}
         <section className="stats-section">
           <div className="stats-grid">
             {[
@@ -946,8 +942,7 @@ export default function VirtualTourWebsite() {
           </div>
         </section>
 
-        {/* INDUSTRIES */}
-        <section className="industries-section">
+        <section className="industries-section" id="industries">
           <div className="industries-bg" />
           <div className="section-header">
             <span className="section-tag">◈ Industries</span>
@@ -967,7 +962,6 @@ export default function VirtualTourWebsite() {
           </div>
         </section>
 
-        {/* CTA */}
         <section className="cta-section">
           <div className="cta-glow" />
           <h2 className="cta-title">
@@ -986,7 +980,6 @@ export default function VirtualTourWebsite() {
             </button>
           </div>
 
-          {/* Trust signals */}
           <div style={{
             marginTop: 60, display: "flex", justifyContent: "center",
             gap: 40, flexWrap: "wrap",
@@ -1003,7 +996,6 @@ export default function VirtualTourWebsite() {
           </div>
         </section>
 
-        {/* FOOTER */}
         <footer className="footer">
           <div className="nav-logo" style={{ fontSize: 18 }}>
             <div className="logo-dot" />
@@ -1012,7 +1004,7 @@ export default function VirtualTourWebsite() {
           <p className="footer-copy">© 2026 VistaSphere. Crafted with precision.</p>
           <ul className="footer-links">
             {["Privacy", "Terms", "Contact"].map(l => (
-              <li key={l}><a>{l}</a></li>
+              <li key={l}><a href="#" onClick={(e) => e.preventDefault()}>{l}</a></li>
             ))}
           </ul>
         </footer>
